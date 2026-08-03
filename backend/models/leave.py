@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,8 +28,8 @@ class Leave(Base):
     is_partial: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     fte_during_leave: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))  # effective FTE; NULL = fully out
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # FK to users.id — Phase 2
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     __table_args__ = (
         CheckConstraint("end_date >= start_date", name="chk_leave_dates"),

@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -92,8 +93,8 @@ class Physician(Base):
     term_start_date: Mapped[Optional[date]] = mapped_column(Date)
     term_end_date: Mapped[Optional[date]] = mapped_column(Date)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     __table_args__ = (
         CheckConstraint("clinical_pct >= 0 AND clinical_pct <= 1", name="chk_clinical_pct"),
@@ -132,11 +133,11 @@ class SiteAssignment(Base):
         UUID(as_uuid=True), ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False
     )
     fte_fraction: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
-    effective_date: Mapped[date] = mapped_column(Date, nullable=False, server_default="CURRENT_DATE")
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("CURRENT_DATE"))
     end_date: Mapped[Optional[date]] = mapped_column(Date)               # NULL = still active
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     __table_args__ = (
         CheckConstraint("fte_fraction > 0 AND fte_fraction <= 1", name="chk_fte_fraction"),
@@ -159,10 +160,10 @@ class PhysicianRole(Base):
     custom_title: Mapped[Optional[str]] = mapped_column(String(200))    # used when not in role_types
     hours_credit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     pct_credit: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))  # alternative to hours_credit
-    effective_date: Mapped[date] = mapped_column(Date, nullable=False, server_default="CURRENT_DATE")
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("CURRENT_DATE"))
     end_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     physician: Mapped["Physician"] = relationship("Physician", back_populates="roles")
     role_type: Mapped[Optional["RoleType"]] = relationship("RoleType", back_populates="physician_roles")

@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, SmallInteger, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, SmallInteger, text, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,7 +25,7 @@ class MonthlyDemand(Base):
     hours_required: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=Decimal("0"))
     notes: Mapped[Optional[str]] = mapped_column(Text)
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # FK to users.id — Phase 2
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     __table_args__ = (
         CheckConstraint("month BETWEEN 1 AND 12", name="chk_month"),
