@@ -1,0 +1,55 @@
+# docker-compose.coolify.yml
+# Use this version when deploying through Coolify instead of docker-compose.prod.yml.
+#
+# Difference from docker-compose.prod.yml: no "ports:" bindings on backend/frontend.
+# Coolify's Traefik proxy sits on the same Docker network and routes to containers
+# directly — it doesn't go through the host's localhost ports the way the
+# hand-rolled Caddy setup did. Coolify adds the routing labels automatically
+# when you set a domain for each service in its UI, so you don't write them here.
+#
+# Postgres still has no published port — only reachable from other containers.
+
+services:
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ed_capacity
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ed_capacity"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/ed_capacity
+      SECRET_KEY: ${SECRET_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    expose:
+      - "80"
+
+volumes:
+  postgres_data:
