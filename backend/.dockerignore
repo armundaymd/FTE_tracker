@@ -1,0 +1,21 @@
+# Never bake secrets into the image
+.env
+.env.*
+
+# Byte-compiled files are regenerated inside the container
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments (deps are installed from requirements.txt)
+venv/
+.venv/
+env/
+
+# Editor / OS artefacts
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,72 @@
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ed_capacity
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Runs automatically on first start (when data dir is empty).
+      # Re-name with a numeric prefix so ordering is explicit if more scripts are added.
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ed_capacity"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s   # give Postgres time to run init scripts before counting failures
+    networks:
+      - ed_cap
+
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # Override default CMD with --reload for hot-reload in development
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app   # mount source for hot-reload; mirrors image contents
+    ports:
+      - "8001:8000"
+    environment:
+      # DATABASE_URL is set here (not via env_file) so the hostname is always
+      # the Docker service name "postgres", regardless of what the local .env says.
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/ed_capacity
+      SECRET_KEY: ${SECRET_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
+    depends_on:
+      postgres:
+        condition: service_healthy   # wait for pg_isready before starting
+    networks:
+      - ed_cap
+
+  # ── Vite / React frontend ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    command: npm run dev -- --host   # --host binds to 0.0.0.0 so Docker can forward the port
+    volumes:
+      - ./frontend:/app              # bind-mount for hot-reload
+      - /app/node_modules            # anonymous volume preserves node_modules from the image;
+                                     # takes precedence over the bind-mount above
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - ed_cap
+
+volumes:
+  postgres_data:    # named volume — survives container restarts and rebuilds
+
+networks:
+  ed_cap:           # explicit named network — all services always share this one,
+    driver: bridge  # regardless of start order or whether containers were previously orphaned

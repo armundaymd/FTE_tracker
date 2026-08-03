@@ -1,0 +1,13 @@
+# node_modules is installed inside the container via npm ci;
+# the host copy (if any) must not overwrite the container's version.
+node_modules/
+.npm/
+
+# Build output — not needed in the dev image
+dist/
+
+# Editor / OS artefacts
+.DS_Store
+.idea/
+.vscode/
+*.swp

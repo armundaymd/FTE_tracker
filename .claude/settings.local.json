@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(sort -k2)",
+      "Bash(docker compose *)",
+      "Bash(POSTGRES_PASSWORD=test env_file_dummy=1 docker compose --env-file /dev/null config --quiet)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(docker exec fte-scheduler-postgres-1 *)",
+      "Bash(PGPASSWORD=sinai_password psql *)",
+      "Bash(docker exec *)",
+      "Bash(docker --version)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8001/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(ps -p 22766 -o pid,ppid,user,lstart,command)",
+      "Bash(kill 22766)",
+      "Bash(curl -s http://localhost:8001/api/sites/)",
+      "Bash(curl -s \"http://localhost:8001/api/demand/?year=2026\")",
+      "Bash(curl -s \"http://localhost:8001/api/capacity/?year=2026&site_id=14da590d-43cf-4651-8fe3-8e6ed367a631\")",
+      "Bash(curl -s -X PUT http://localhost:8001/api/demand/ -H \"Content-Type: application/json\" -d '{\"site_id\":\"14da590d-43cf-4651-8fe3-8e6ed367a631\",\"year\":2026,\"month\":1,\"hours_required\":999}')",
+      "Bash(curl -s -X PUT http://localhost:8001/api/demand/ -H \"Content-Type: application/json\" -d '{\"site_id\":\"14da590d-43cf-4651-8fe3-8e6ed367a631\",\"year\":2026,\"month\":1,\"hours_required\":320}')",
+      "Bash(curl -s http://localhost:8001/api/physicians/)",
+      "Bash(curl -s -X PUT http://localhost:8001/api/physicians/bc284b51-7abd-4315-8ff1-2fc0a2242500 -H 'Content-Type: application/json' -d '{\"notes\":\"K Awardee end date TBD\"}')",
+      "Bash(curl -s http://localhost:8001/api/physicians/bc284b51-7abd-4315-8ff1-2fc0a2242500)",
+      "Bash(curl *)"
+    ]
+  }
+}
