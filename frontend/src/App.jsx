@@ -15,7 +15,7 @@ const TYPE_COLORS = {"MD":{bg:"#EFF6FF",color:"#1D4ED8"},"DO":{bg:"#EFF6FF",colo
 const typeColor = (t) => TYPE_COLORS[t] || {bg:"#FEF9C3",color:"#854D0E"};
 
 // ── API ────────────────────────────────────────────────────────────────────
-const API_BASE = "http://localhost:8001/api";
+const API_BASE = "https://api-capacity.adamrmunday.com/api";
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
