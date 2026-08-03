@@ -1,0 +1,25 @@
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Python / backend
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Secrets - never commit these
+.env
+.env.local
+.env.prod
+*.env
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
