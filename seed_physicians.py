@@ -9,13 +9,14 @@ import json
 import sys
 import urllib.request
 import urllib.error
+import ssl
 
-API = "http://localhost:8001/api"
+API = "https://api-capacity.adamrmunday.com/api"
 
 # ── Site UUIDs (from SELECT id, name FROM sites) ──────────────────────────
-MSH = "c49408d2-34c8-4ddd-8daa-fc90f8616361"  # Mount Sinai Hospital
-MSB = "14da590d-43cf-4651-8fe3-8e6ed367a631"  # Mount Sinai Beth Israel
-MSQ = "14ddd509-97c7-4d17-86fa-899ceb8069f0"  # Mount Sinai Queens
+MSH = "3ad376bf-3619-47c3-9602-9ae209ba02cf"  # Mount Sinai Hospital
+MSB = "f9f2d48a-7e91-4e03-bfd0-2171d80a097a"  # Mount Sinai Beth Israel
+MSQ = "ecf69cf6-978a-406c-8959-1832181006df"  # Mount Sinai Queens
 
 # ── provider_type ids (from SELECT id, name FROM provider_types) ──────────
 MD  = 1
@@ -41,10 +42,14 @@ def post(path, data):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req, context=ssl._create_unverified_context()) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        detail = json.loads(e.read()).get("detail", str(e))
+        body = e.read().decode(errors="replace")
+        try:
+            detail = json.loads(body).get("detail", body)
+        except json.JSONDecodeError:
+            detail = body
         print(f"  ERROR {e.code} on POST {path}: {detail}", file=sys.stderr)
         raise
 

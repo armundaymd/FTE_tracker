@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change_me_before_deploying"
     ALLOWED_ORIGINS: str = "http://localhost:5173"
 
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 14
+    COOKIE_SECURE: bool = False  # must be true in production (HTTPS) — see .env.example
+
     model_config = {"env_file": (".env", "../.env"), "extra": "ignore"}
 
 

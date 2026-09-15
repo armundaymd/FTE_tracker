@@ -27,7 +27,7 @@ class MonthlyDemandRead(MonthlyDemandBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    updated_by: Optional[uuid.UUID] = None   # FK to users.id — Phase 2
+    updated_by: Optional[uuid.UUID] = None   # FK to users.id — set from CurrentUser.id on write
     updated_at: datetime
 
 

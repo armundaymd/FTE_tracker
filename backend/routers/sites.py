@@ -1,14 +1,16 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from auth.dependencies import CurrentUser, get_current_user
+from audit.logger import log_audit, snapshot
 from db import get_db
 from models.site import Site, SiteArea
-from schemas.site import SiteAreaCreate, SiteCreate, SiteRead, SiteUpdate
+from schemas.site import SiteAreaCreate, SiteAreaRead, SiteCreate, SiteRead, SiteUpdate
 
 router = APIRouter()
 
@@ -26,18 +28,23 @@ async def _get_site_or_404(site_id: uuid.UUID, db: AsyncSession) -> Site:
 
 
 @router.get("/", response_model=List[SiteRead])
-async def list_sites(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Site)
-        .where(Site.active == True)
-        .options(selectinload(Site.areas))
-        .order_by(Site.name)
-    )
+async def list_sites(
+    include_inactive: bool = Query(False, description="Include inactive sites (default: active only)"),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Site).options(selectinload(Site.areas)).order_by(Site.name)
+    if not include_inactive:
+        stmt = stmt.where(Site.active == True)
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 
 @router.post("/", response_model=SiteRead, status_code=status.HTTP_201_CREATED)
-async def create_site(payload: SiteCreate, db: AsyncSession = Depends(get_db)):
+async def create_site(
+    payload: SiteCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     site = Site(name=payload.name, short_name=payload.short_name, active=payload.active)
     db.add(site)
     await db.flush()  # materialise site.id before creating child areas
@@ -45,9 +52,10 @@ async def create_site(payload: SiteCreate, db: AsyncSession = Depends(get_db)):
     for area_data in payload.areas:
         db.add(SiteArea(site_id=site.id, **area_data.model_dump()))
 
-    await db.commit()
-
     # Re-fetch with relationships loaded
+    result = await _get_site_or_404(site.id, db)
+    await log_audit(db, current_user, "INSERT", "sites", site.id, new_values=snapshot(SiteRead, result))
+    await db.commit()
     return await _get_site_or_404(site.id, db)
 
 
@@ -56,18 +64,31 @@ async def update_site(
     site_id: uuid.UUID,
     payload: SiteUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     site = await _get_site_or_404(site_id, db)
+    old_values = snapshot(SiteRead, site)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(site, field, value)
+    updated = await _get_site_or_404(site_id, db)
+    await log_audit(
+        db, current_user, "UPDATE", "sites", site_id,
+        old_values=old_values, new_values=snapshot(SiteRead, updated),
+    )
     await db.commit()
     return await _get_site_or_404(site_id, db)
 
 
 @router.delete("/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def deactivate_site(site_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def deactivate_site(
+    site_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     site = await _get_site_or_404(site_id, db)
+    old_values = snapshot(SiteRead, site)
     site.active = False
+    await log_audit(db, current_user, "DELETE", "sites", site_id, old_values=old_values)
     await db.commit()
 
 
@@ -82,9 +103,13 @@ async def add_site_area(
     site_id: uuid.UUID,
     payload: SiteAreaCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     site = await _get_site_or_404(site_id, db)
-    db.add(SiteArea(site_id=site.id, **payload.model_dump()))
+    area = SiteArea(site_id=site.id, **payload.model_dump())
+    db.add(area)
+    await db.flush()
+    await log_audit(db, current_user, "INSERT", "site_areas", area.id, new_values=snapshot(SiteAreaRead, area))
     await db.commit()
     return await _get_site_or_404(site_id, db)
 
@@ -94,6 +119,7 @@ async def remove_site_area(
     site_id: uuid.UUID,
     area_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     result = await db.execute(
         select(SiteArea)
@@ -103,5 +129,7 @@ async def remove_site_area(
     area = result.scalar_one_or_none()
     if area is None:
         raise HTTPException(status_code=404, detail="Area not found")
+    old_values = snapshot(SiteAreaRead, area)
     await db.delete(area)
+    await log_audit(db, current_user, "DELETE", "site_areas", area_id, old_values=old_values)
     await db.commit()

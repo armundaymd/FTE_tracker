@@ -36,7 +36,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
@@ -91,6 +91,24 @@ def _leave_reduction(
     return overlap_fraction
 
 
+def _assignment_active_in_month(sa: SiteAssignment, year: int, month: int) -> bool:
+    """
+    Whether this history row was the effective one for the given month.
+
+    Uses the LAST day of the month as the snapshot date: a row covers the
+    month if its [effective_date, end_date] range includes that day. This is
+    a whole-month approximation (matching how leaves-aside FTE isn't prorated
+    within a month elsewhere in this calculation) — a change effective any
+    time during the month shows up starting that month, not split across it.
+    """
+    snapshot_day = date(year, month, _days_in_month(year, month))
+    if sa.effective_date > snapshot_day:
+        return False
+    if sa.end_date is not None and sa.end_date < snapshot_day:
+        return False
+    return True
+
+
 # ── Endpoint ───────────────────────────────────────────────────────────────
 
 @router.get("/", response_model=CapacityResponse)
@@ -112,28 +130,33 @@ async def get_capacity(
     site_ids = [s.id for s in sites]
     site_map = {s.id: s for s in sites}
 
-    # ── 2. Active site assignments (end_date IS NULL, physician is_active) ───
+    # ── 2. Site assignments whose date range overlaps the requested year ─────
+    # site_assignments is a history (Phase B): a physician can have several
+    # rows at the same site over time, each covering [effective_date, end_date].
+    # We fetch every row that overlaps this year (not just the currently-open
+    # one) so each month below can pick whichever row was actually in effect
+    # then, rather than always using today's row.
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
     assignments_stmt = (
         select(SiteAssignment, Physician)
         .join(Physician, SiteAssignment.physician_id == Physician.id)
-        .where(SiteAssignment.end_date.is_(None))
         .where(SiteAssignment.site_id.in_(site_ids))
         .where(Physician.is_active == True)
+        .where(SiteAssignment.effective_date <= year_end)
+        .where(or_(SiteAssignment.end_date.is_(None), SiteAssignment.end_date >= year_start))
     )
     assignments_result = await db.execute(assignments_stmt)
     assignment_rows = assignments_result.all()
 
-    # Per-site: list of (fte_fraction, yearly_hours, clinical_pct, physician_id)
-    AssignmentTuple = Tuple[float, int, float, uuid.UUID]
-    assignments_by_site: Dict[uuid.UUID, List[AssignmentTuple]] = {s.id: [] for s in sites}
+    # Per-site: list of (SiteAssignment, Physician) — filtered per month below.
+    assignments_by_site: Dict[uuid.UUID, List[Tuple[SiteAssignment, Physician]]] = {s.id: [] for s in sites}
 
     physician_map: Dict[uuid.UUID, Physician] = {}
     physician_ids: Set[uuid.UUID] = set()
 
     for sa, ph in assignment_rows:
-        assignments_by_site[sa.site_id].append(
-            (float(sa.fte_fraction), ph.yearly_hours, float(ph.clinical_pct), ph.id)
-        )
+        assignments_by_site[sa.site_id].append((sa, ph))
         physician_map[ph.id] = ph
         physician_ids.add(ph.id)
 
@@ -180,7 +203,18 @@ async def get_capacity(
             clinical_hours = 0.0
             non_clinical_hours = 0.0
 
-            for fte_fraction, yearly_hours, clinical_pct, ph_id in assignments_by_site[site.id]:
+            for sa, ph in assignments_by_site[site.id]:
+                if not _assignment_active_in_month(sa, year, month):
+                    continue
+
+                fte_fraction = float(sa.fte_fraction)
+                yearly_hours = ph.yearly_hours
+                # One value applied uniformly across all 12 months, even though
+                # (Phase D) clinical_pct can now change mid-year via time_allocations —
+                # this endpoint is not month-aware for clinical_pct; a future phase
+                # would need to look it up per month from time_allocations directly.
+                clinical_pct = float(ph.clinical_pct)
+                ph_id = ph.id
                 base_monthly = (yearly_hours / 12) * fte_fraction
 
                 # Accumulate reduction from all leaves for this physician this month

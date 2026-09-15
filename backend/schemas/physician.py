@@ -35,6 +35,7 @@ class SiteAssignmentBase(BaseModel):
     effective_date: date = Field(default_factory=date.today)
     end_date: Optional[date] = None
     notes: Optional[str] = None
+    change_reason: Optional[str] = None
 
 
 class SiteAssignmentCreate(SiteAssignmentBase):
@@ -42,10 +43,19 @@ class SiteAssignmentCreate(SiteAssignmentBase):
 
 
 class SiteAssignmentUpdate(BaseModel):
+    site_id: Optional[uuid.UUID] = None
     fte_fraction: Optional[Decimal] = Field(None, gt=0, le=1)
-    effective_date: Optional[date] = None
-    end_date: Optional[date] = None
     notes: Optional[str] = None
+    change_reason: Optional[str] = None
+    # Date the fte_fraction/site_id change takes effect (default: today). Used
+    # only for a substantive (FTE- or site-affecting) change — see
+    # update_assignment in routers/physicians.py for how this closes the old
+    # row and opens a new one instead of editing in place.
+    effective_date: Optional[date] = None
+    # Set directly only when NOT paired with an FTE/site change — e.g. to
+    # terminate an assignment with no replacement. Ignored on the
+    # close-and-insert path, where the old row's end_date is derived instead.
+    end_date: Optional[date] = None
 
 
 class SiteAssignmentRead(SiteAssignmentBase):
@@ -67,6 +77,7 @@ class PhysicianRoleBase(BaseModel):
     effective_date: date = Field(default_factory=date.today)
     end_date: Optional[date] = None
     notes: Optional[str] = None
+    change_reason: Optional[str] = None
 
 
 class PhysicianRoleCreate(PhysicianRoleBase):
@@ -78,9 +89,15 @@ class PhysicianRoleUpdate(BaseModel):
     custom_title: Optional[str] = Field(None, max_length=200)
     hours_credit: Optional[int] = None
     pct_credit: Optional[Decimal] = None
-    effective_date: Optional[date] = None
-    end_date: Optional[date] = None
     notes: Optional[str] = None
+    change_reason: Optional[str] = None
+    # Date the hours_credit/pct_credit change takes effect (default: today).
+    # Used only for a substantive (credit-affecting) change — see
+    # update_role in routers/physicians.py.
+    effective_date: Optional[date] = None
+    # Set directly only when NOT paired with a credit change — e.g. to end a
+    # role with no replacement.
+    end_date: Optional[date] = None
 
 
 class PhysicianRoleRead(PhysicianRoleBase):
@@ -142,6 +159,7 @@ class PhysicianRead(PhysicianBase):
     qgenda_staff_id: Optional[str] = None
     qgenda_staff_key: Optional[str] = None
     needs_fte_config: bool = False
+    needs_time_allocation_config: bool = True
     last_synced_at: Optional[datetime] = None
     assignments: List[SiteAssignmentRead] = []
     roles: List[PhysicianRoleRead] = []
@@ -165,3 +183,4 @@ class PhysicianListItem(BaseModel):
     core_site_id: Optional[uuid.UUID]
     is_active: bool
     needs_fte_config: bool
+    needs_time_allocation_config: bool

@@ -27,7 +27,7 @@ class Leave(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_partial: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     fte_during_leave: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))  # effective FTE; NULL = fully out
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # FK to users.id — Phase 2
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # FK to users.id — set from CurrentUser.id on write
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 

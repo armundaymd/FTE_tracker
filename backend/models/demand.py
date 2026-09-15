@@ -24,7 +24,7 @@ class MonthlyDemand(Base):
     month: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     hours_required: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=Decimal("0"))
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # FK to users.id — Phase 2
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # FK to users.id — set from CurrentUser.id on write
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     __table_args__ = (

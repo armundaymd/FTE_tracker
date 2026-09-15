@@ -24,6 +24,7 @@ from db import Base
 if TYPE_CHECKING:
     from models.leave import Leave
     from models.site import Site
+    from models.time_allocation import TimeAllocation
 
 
 class ProviderType(Base):
@@ -89,6 +90,11 @@ class Physician(Base):
     needs_fte_config: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # ── Time allocations (Phase D) ──────────────────────────────────────────
+    # Independent of needs_fte_config above — a physician can have either
+    # flag, both, or neither.
+    needs_time_allocation_config: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
     # ── Term dates (fellows) ─────────────────────────────────────────────────
     term_start_date: Mapped[Optional[date]] = mapped_column(Date)
     term_end_date: Mapped[Optional[date]] = mapped_column(Date)
@@ -118,6 +124,9 @@ class Physician(Base):
     leaves: Mapped[List["Leave"]] = relationship(
         "Leave", back_populates="physician", cascade="all, delete-orphan"
     )
+    time_allocations: Mapped[List["TimeAllocation"]] = relationship(
+        "TimeAllocation", back_populates="physician", cascade="all, delete-orphan"
+    )
 
 
 class SiteAssignment(Base):
@@ -136,6 +145,7 @@ class SiteAssignment(Base):
     effective_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("CURRENT_DATE"))
     end_date: Mapped[Optional[date]] = mapped_column(Date)               # NULL = still active
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    change_reason: Mapped[Optional[str]] = mapped_column(Text)           # why this row was closed/opened
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
@@ -163,6 +173,7 @@ class PhysicianRole(Base):
     effective_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("CURRENT_DATE"))
     end_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    change_reason: Mapped[Optional[str]] = mapped_column(Text)  # why this row was closed/opened
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     physician: Mapped["Physician"] = relationship("Physician", back_populates="roles")

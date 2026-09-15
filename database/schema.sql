@@ -86,6 +86,33 @@ INSERT INTO role_types (name, category, display_order) VALUES
     ('Other',                           'Other',         16);
 
 -- ============================================================
+-- TIME CATEGORIES
+-- (Phase D — the 10 category columns from the staffing spreadsheet;
+-- clinical_pct is derived from these via time_allocations rather than
+-- stored as a manually-entered value, once a physician has rows here)
+-- ============================================================
+CREATE TABLE time_categories (
+    id              SERIAL PRIMARY KEY,
+    name            VARCHAR(50) NOT NULL UNIQUE,   -- "Adult ED", "Peds ED", "P2P", "VUC",
+                                                     -- "IHS", "Elmhurst", "Admin",
+                                                     -- "Nocturnist", "Teaching", "Research"
+    is_clinical     BOOLEAN NOT NULL,
+    display_order   INTEGER NOT NULL
+);
+
+INSERT INTO time_categories (name, is_clinical, display_order) VALUES
+    ('Adult ED',    TRUE,   1),
+    ('Peds ED',     TRUE,   2),
+    ('P2P',         TRUE,   3),
+    ('VUC',         TRUE,   4),
+    ('IHS',         TRUE,   5),
+    ('Elmhurst',    TRUE,   6),
+    ('Admin',       FALSE,  7),
+    ('Nocturnist',  FALSE,  8),
+    ('Teaching',    FALSE,  9),
+    ('Research',    FALSE, 10);
+
+-- ============================================================
 -- PHYSICIANS / PROVIDERS
 -- ============================================================
 CREATE TABLE physicians (
@@ -120,6 +147,14 @@ CREATE TABLE physicians (
     needs_fte_config    BOOLEAN NOT NULL DEFAULT FALSE,       -- flagged after QGenda sync if new
     last_synced_at      TIMESTAMPTZ,
 
+    -- Phase D — independent of needs_fte_config above: flags physicians whose
+    -- time_allocations hours don't yet sum to yearly_hours (or who have none
+    -- yet). A physician can have either flag, both, or neither. Defaults TRUE
+    -- (not FALSE) since a physician with zero time_allocations rows — true of
+    -- every existing physician at migration time, and of every new one until
+    -- their grid is filled in — always needs configuration by definition.
+    needs_time_allocation_config BOOLEAN NOT NULL DEFAULT TRUE,
+
     -- Term dates (for fellows with end dates)
     term_start_date     DATE,
     term_end_date       DATE,
@@ -150,6 +185,7 @@ CREATE TABLE site_assignments (
     effective_date  DATE NOT NULL DEFAULT CURRENT_DATE,  -- when this assignment started
     end_date        DATE,                                -- NULL = still active
     notes           TEXT,
+    change_reason   TEXT,                                -- why this row was closed/opened, e.g. "reduced to 0.6 for research time"
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -175,10 +211,36 @@ CREATE TABLE physician_roles (
     effective_date  DATE NOT NULL DEFAULT CURRENT_DATE,
     end_date        DATE,                               -- NULL = still active
     notes           TEXT,                               -- e.g. "starting 4/1/26", "grant funded"
+    change_reason   TEXT,                               -- why this row was closed/opened
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_physician_roles_physician ON physician_roles (physician_id);
+
+-- ============================================================
+-- TIME ALLOCATIONS
+-- (Phase D — physician x site x category x month hours grid. One row
+-- per cell rather than a wide 12-month table, matching monthly_demand's
+-- normalized style. clinical_pct on physicians is derived from this.)
+-- ============================================================
+CREATE TABLE time_allocations (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    physician_id      UUID NOT NULL REFERENCES physicians(id) ON DELETE CASCADE,
+    site_id           UUID REFERENCES sites(id),   -- nullable: some categories
+                                                     -- (e.g. Research) may not be
+                                                     -- site-specific
+    time_category_id  INTEGER NOT NULL REFERENCES time_categories(id),
+    year              INTEGER NOT NULL,
+    month             INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+    hours             NUMERIC(6,2) NOT NULL DEFAULT 0 CHECK (hours >= 0),
+    change_reason     TEXT,                          -- consistent with Phase B
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_time_allocation UNIQUE (physician_id, site_id, time_category_id, year, month)
+);
+
+CREATE INDEX idx_time_allocations_physician_year ON time_allocations (physician_id, year);
 
 -- ============================================================
 -- LEAVE EVENTS
@@ -240,19 +302,19 @@ CREATE TABLE users (
     email           VARCHAR(255) NOT NULL UNIQUE,
     hashed_password VARCHAR(255),                       -- NULL if using SSO only
     role            VARCHAR(20) NOT NULL DEFAULT 'viewer'
-                        CHECK (role IN ('admin','editor','viewer')),
+                        CHECK (role IN ('admin','editor','viewer','provider')),
+    physician_id    UUID REFERENCES physicians(id),      -- set for accounts tied to one provider; NULL for admin-only accounts
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     last_login_at   TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed default admin (password: changeme — MUST change before deploying)
--- Password hash generated with: bcrypt.hash("changeme", 12)
-INSERT INTO users (name, email, hashed_password, role) VALUES
-    ('Admin', 'admin@yourdomain.com',
-     '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.iK8e',
-     'admin');
+-- No seed admin user here on purpose — hardcoding a known password hash in
+-- version control is a standing credential leak. Create the first admin with:
+--   python backend/scripts/create_admin.py
+-- (reads ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME from the environment, or
+-- prompts interactively if they're not set).
 
 -- ============================================================
 -- AUDIT LOG
@@ -276,6 +338,27 @@ CREATE TABLE audit_log (
 CREATE INDEX idx_audit_log_table_record ON audit_log (table_name, record_id);
 CREATE INDEX idx_audit_log_user ON audit_log (user_id);
 CREATE INDEX idx_audit_log_created ON audit_log (created_at DESC);
+
+-- ============================================================
+-- ERROR LOG
+-- (every unhandled backend exception — see main.py's global exception
+-- handler. error_id is shown in the API's 500 response so a user's bug
+-- report can be looked up here directly.)
+-- ============================================================
+CREATE TABLE error_log (
+    id              BIGSERIAL PRIMARY KEY,
+    error_id        VARCHAR(32) NOT NULL UNIQUE,
+    method          VARCHAR(10) NOT NULL,
+    path            VARCHAR(500) NOT NULL,
+    exception_type  VARCHAR(200) NOT NULL,
+    message         TEXT NOT NULL,
+    traceback       TEXT NOT NULL,
+    user_id         UUID,                                -- best-effort, decoded from the bearer token if present
+    user_email      VARCHAR(255),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_error_log_created ON error_log (created_at DESC);
 
 -- ============================================================
 -- QGENDA SYNC LOG
@@ -380,6 +463,22 @@ WHERE p.needs_fte_config = TRUE
   AND p.is_active = TRUE
 ORDER BY p.last_synced_at DESC;
 
+-- Phase D — "Total Hrs Check" from the spreadsheet, as a worklist rather
+-- than a per-row visual flag. Rows with hours_variance != 0 are the ones
+-- whose time_allocations don't yet sum to yearly_hours.
+CREATE VIEW v_time_allocation_check AS
+SELECT
+    p.id AS physician_id,
+    p.last_name, p.first_name,
+    p.yearly_hours,
+    COALESCE(SUM(ta.hours), 0) AS allocated_hours,
+    p.yearly_hours - COALESCE(SUM(ta.hours), 0) AS hours_variance
+FROM physicians p
+LEFT JOIN time_allocations ta
+    ON ta.physician_id = p.id AND ta.year = EXTRACT(YEAR FROM CURRENT_DATE)
+WHERE p.is_active
+GROUP BY p.id, p.last_name, p.first_name, p.yearly_hours;
+
 -- ============================================================
 -- TRIGGERS
 -- (auto-update updated_at timestamps)
@@ -406,6 +505,10 @@ CREATE TRIGGER set_updated_at_site_assignments
 
 CREATE TRIGGER set_updated_at_leaves
     BEFORE UPDATE ON leaves
+    FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+
+CREATE TRIGGER set_updated_at_time_allocations
+    BEFORE UPDATE ON time_allocations
     FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
 -- ============================================================

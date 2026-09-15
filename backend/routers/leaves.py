@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from auth.dependencies import CurrentUser, get_current_user
+from audit.logger import log_audit, snapshot
 from db import get_db
 from models.leave import Leave
 from schemas.leave import LeaveCreate, LeaveRead, LeaveUpdate
@@ -43,9 +45,15 @@ async def list_leaves(
 
 
 @router.post("/", response_model=LeaveRead, status_code=status.HTTP_201_CREATED)
-async def create_leave(payload: LeaveCreate, db: AsyncSession = Depends(get_db)):
-    leave = Leave(**payload.model_dump())
+async def create_leave(
+    payload: LeaveCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    leave = Leave(**payload.model_dump(), created_by=current_user.id)
     db.add(leave)
+    await db.flush()
+    await log_audit(db, current_user, "INSERT", "leaves", leave.id, new_values=snapshot(LeaveRead, leave))
     await db.commit()
     await db.refresh(leave)
     return leave
@@ -56,8 +64,10 @@ async def update_leave(
     leave_id: uuid.UUID,
     payload: LeaveUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     leave = await _get_or_404(leave_id, db)
+    old_values = snapshot(LeaveRead, leave)
 
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
@@ -72,13 +82,24 @@ async def update_leave(
             detail="end_date must be on or after start_date",
         )
 
+    await db.flush()
+    await log_audit(
+        db, current_user, "UPDATE", "leaves", leave_id,
+        old_values=old_values, new_values=snapshot(LeaveRead, leave),
+    )
     await db.commit()
     await db.refresh(leave)
     return leave
 
 
 @router.delete("/{leave_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_leave(leave_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def delete_leave(
+    leave_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     leave = await _get_or_404(leave_id, db)
+    old_values = snapshot(LeaveRead, leave)
     await db.delete(leave)
+    await log_audit(db, current_user, "DELETE", "leaves", leave_id, old_values=old_values)
     await db.commit()

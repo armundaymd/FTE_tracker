@@ -6,6 +6,8 @@ pydantic
 pydantic-settings
 python-dotenv
 passlib[bcrypt]
+bcrypt<4.1  # passlib 1.7.4 breaks on bcrypt>=4.1 (removed the `__about__` attribute it probes for)
 python-jose[cryptography]
 httpx
 rapidfuzz
+openpyxl

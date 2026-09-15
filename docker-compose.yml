@@ -41,6 +41,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/ed_capacity
       SECRET_KEY: ${SECRET_KEY}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-14}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy   # wait for pg_isready before starting
@@ -53,6 +56,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     command: npm run dev -- --host   # --host binds to 0.0.0.0 so Docker can forward the port
+    environment:
+      # Runs in the browser, not the container, so this must be the URL the
+      # host machine (not Docker's internal network) reaches the backend at.
+      VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8001/api}
     volumes:
       - ./frontend:/app              # bind-mount for hot-reload
       - /app/node_modules            # anonymous volume preserves node_modules from the image;

@@ -49,6 +49,6 @@ class LeaveRead(LeaveBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    created_by: Optional[uuid.UUID] = None   # FK to users.id — Phase 2
+    created_by: Optional[uuid.UUID] = None   # FK to users.id — set from CurrentUser.id on write
     created_at: datetime
     updated_at: datetime
