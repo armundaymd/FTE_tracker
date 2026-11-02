@@ -23,3 +23,6 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Physician staffing data - keep local, this repo is public
+2026-staffing.xlsx
